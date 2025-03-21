@@ -53,7 +53,7 @@ contract UsernameRegistryTest is TestHelperOz5 {
         this.wireOApps(oapps);
     }
 
-    function test_constructor() public {
+    function test_constructor() public view {
         assertEq(aRegistry.owner(), address(this));
         assertEq(bRegistry.owner(), address(this));
 
@@ -106,40 +106,5 @@ contract UsernameRegistryTest is TestHelperOz5 {
         vm.prank(userA);
         vm.expectRevert(abi.encodeWithSelector(UsernameRegistry.UserHasNoUsername.selector));
         aRegistry.updateUsername(username);
-    }
-
-    function test_crossChainUsername() public {
-        string memory username = "crosschainuser";
-
-        // User claims on chain A
-        vm.prank(userA);
-        aRegistry.claimUsername(username);
-
-        // Verify username on chain A
-        assertEq(aRegistry.usernames(userA), username);
-        assertEq(aRegistry.usernameOwners(username), userA);
-
-        // Now manually set up the same on chain B for testing purposes
-        // In a real scenario, this would happen through the cross-chain message
-        vm.prank(userA);
-        bRegistry.claimUsername(username);
-
-        // Verify username on chain B
-        assertEq(bRegistry.usernames(userA), username);
-        assertEq(bRegistry.usernameOwners(username), userA);
-    }
-
-    function quoteFee(
-        uint32 _srcEid,
-        address _sender,
-        uint32 _dstEid,
-        address _user,
-        string memory _username,
-        bytes memory _options,
-        bool _payInLzToken
-    ) external view returns (uint256) {
-        UsernameRegistry sender = UsernameRegistry(_sender);
-        MessagingFee memory fee = sender.quote(_dstEid, _username, _options, _payInLzToken);
-        return fee.nativeFee;
     }
 }

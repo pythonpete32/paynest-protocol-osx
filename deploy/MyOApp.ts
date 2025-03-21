@@ -1,6 +1,6 @@
-import assert from 'assert'
+import assert from 'node:assert'
 
-import { type DeployFunction } from 'hardhat-deploy/types'
+import type { DeployFunction } from 'hardhat-deploy/types'
 
 // TODO declare your contract name here
 const contractName = 'MyOApp'
