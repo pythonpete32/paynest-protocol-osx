@@ -153,21 +153,4 @@ contract UsernameRegistry is OApp, OAppOptionsType3 {
         usernames[user] = username;
         usernameOwners[username] = user;
     }
-
-    /**
-     * @dev Public helper function for testing - allows direct simulation of receiving a cross-chain message
-     */
-    function testLzReceive(bytes memory _payload) public {
-        (address user, string memory username) = abi.decode(_payload, (address, string));
-
-        // Store previous username if exists
-        string memory oldUsername = usernames[user];
-        if (bytes(oldUsername).length > 0) {
-            delete usernameOwners[oldUsername];
-        }
-
-        // Update mappings
-        usernames[user] = username;
-        usernameOwners[username] = user;
-    }
 }
