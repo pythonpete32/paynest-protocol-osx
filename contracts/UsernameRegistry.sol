@@ -129,13 +129,14 @@ contract UsernameRegistry is OApp, OAppOptionsType3 {
         // Check if options array matches destination chains array
         require(_dstEids.length == _options.length, "Options length must match destinations");
 
+        // If there are no destinations, just return an empty array
+        if (_dstEids.length == 0) return new MessagingReceipt[](0);
+
         // Get total fee required
         MessagingFee memory totalFee = quoteUpdate(_dstEids, _username, _options, false);
 
         // Check if enough value was sent
-        if (msg.value < totalFee.nativeFee) {
-            revert InsufficientValue(msg.value, totalFee.nativeFee);
-        }
+        if (msg.value < totalFee.nativeFee) revert InsufficientValue(msg.value, totalFee.nativeFee);
 
         // Create array to store receipts
         receipts = new MessagingReceipt[](_dstEids.length);

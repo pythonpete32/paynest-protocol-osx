@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 // UsernameRegistry imports
-import { UsernameRegistry } from "../../contracts/UsernameRegistry.sol";
+import { UsernameRegistry } from "../contracts/UsernameRegistry.sol";
 
 // OApp imports
 import { IOAppOptionsType3, EnforcedOptionParam } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OAppOptionsType3.sol";
@@ -64,8 +64,15 @@ contract UsernameRegistryTest is TestHelperOz5 {
     function test_claimUsername() public {
         string memory username = "testuser";
 
+        // Create destination array with just the current chain for local testing
+        uint32[] memory dstEids = new uint32[](0);
+        bytes[] memory options = new bytes[](0);
+
+        // Get the quote for the required fee
+        MessagingFee memory fee = aRegistry.quoteUpdate(dstEids, username, options, false);
+
         vm.prank(userA);
-        aRegistry.claimUsername(username);
+        aRegistry.claimUsername{ value: fee.nativeFee }(username, dstEids, options);
 
         assertEq(aRegistry.usernames(userA), username);
         assertEq(aRegistry.usernameOwners(username), userA);
@@ -74,25 +81,42 @@ contract UsernameRegistryTest is TestHelperOz5 {
     function test_claimUsername_alreadyClaimed() public {
         string memory username = "testuser";
 
+        // Create destination array with just the current chain for local testing
+        uint32[] memory dstEids = new uint32[](0);
+        bytes[] memory options = new bytes[](0);
+
+        // Get the quote for the required fee
+        MessagingFee memory fee = aRegistry.quoteUpdate(dstEids, username, options, false);
+
         vm.prank(userA);
-        aRegistry.claimUsername(username);
+        aRegistry.claimUsername{ value: fee.nativeFee }(username, dstEids, options);
 
         vm.prank(userB);
         vm.expectRevert(abi.encodeWithSelector(UsernameRegistry.UsernameAlreadyClaimed.selector, username));
-        aRegistry.claimUsername(username);
+        aRegistry.claimUsername{ value: fee.nativeFee }(username, dstEids, options);
     }
 
     function test_updateUsername() public {
         string memory username1 = "oldname";
         string memory username2 = "newname";
 
+        // Create destination array with just the current chain for local testing
+        uint32[] memory dstEids = new uint32[](0);
+        bytes[] memory options = new bytes[](0);
+
+        // Get the quote for the required fee
+        MessagingFee memory fee = aRegistry.quoteUpdate(dstEids, username1, options, false);
+
         vm.startPrank(userA);
-        aRegistry.claimUsername(username1);
+        aRegistry.claimUsername{ value: fee.nativeFee }(username1, dstEids, options);
 
         assertEq(aRegistry.usernames(userA), username1);
         assertEq(aRegistry.usernameOwners(username1), userA);
 
-        aRegistry.updateUsername(username2);
+        // Get the quote for the update
+        fee = aRegistry.quoteUpdate(dstEids, username2, options, false);
+
+        aRegistry.updateUsername{ value: fee.nativeFee }(username2, dstEids, options);
         vm.stopPrank();
 
         assertEq(aRegistry.usernames(userA), username2);
@@ -103,8 +127,87 @@ contract UsernameRegistryTest is TestHelperOz5 {
     function test_updateUsername_noExistingUsername() public {
         string memory username = "testuser";
 
+        // Create destination array with just the current chain for local testing
+        uint32[] memory dstEids = new uint32[](0);
+        bytes[] memory options = new bytes[](0);
+
         vm.prank(userA);
         vm.expectRevert(abi.encodeWithSelector(UsernameRegistry.UserHasNoUsername.selector));
-        aRegistry.updateUsername(username);
+        aRegistry.updateUsername(username, dstEids, options);
+    }
+
+    function test_claimUsername_crossChain() public {
+        string memory username = "crosschainuser";
+
+        // Create destination array with the other chain
+        uint32[] memory dstEids = new uint32[](1);
+        dstEids[0] = bEid;
+
+        // Prepare options for cross-chain message
+        bytes[] memory options = new bytes[](1);
+        options[0] = OptionsBuilder.newOptions().addExecutorLzReceiveOption(200000, 0);
+
+        // Get the quote for the required fee
+        MessagingFee memory fee = aRegistry.quoteUpdate(dstEids, username, options, false);
+
+        vm.prank(userA);
+        MessagingReceipt[] memory receipts = aRegistry.claimUsername{ value: fee.nativeFee }(
+            username,
+            dstEids,
+            options
+        );
+
+        // Verify the username is claimed on the source chain
+        assertEq(aRegistry.usernames(userA), username);
+        assertEq(aRegistry.usernameOwners(username), userA);
+
+        // Deliver the message to the target chain
+        verifyPackets(bEid, address(bRegistry));
+
+        // Verify the username is also claimed on the target chain
+        assertEq(bRegistry.usernames(userA), username);
+        assertEq(bRegistry.usernameOwners(username), userA);
+    }
+
+    function test_updateUsername_crossChain() public {
+        string memory username1 = "firstcrosschain";
+        string memory username2 = "updatedcrosschain";
+
+        // First claim a username cross-chain
+        uint32[] memory dstEids = new uint32[](1);
+        dstEids[0] = bEid;
+
+        bytes[] memory options = new bytes[](1);
+        options[0] = OptionsBuilder.newOptions().addExecutorLzReceiveOption(200000, 0);
+
+        MessagingFee memory fee = aRegistry.quoteUpdate(dstEids, username1, options, false);
+
+        vm.prank(userA);
+        aRegistry.claimUsername{ value: fee.nativeFee }(username1, dstEids, options);
+
+        // Deliver the claim message
+        verifyPackets(bEid, address(bRegistry));
+
+        // Verify username is claimed on both chains
+        assertEq(aRegistry.usernames(userA), username1);
+        assertEq(bRegistry.usernames(userA), username1);
+
+        // Now update the username cross-chain
+        fee = aRegistry.quoteUpdate(dstEids, username2, options, false);
+
+        vm.prank(userA);
+        aRegistry.updateUsername{ value: fee.nativeFee }(username2, dstEids, options);
+
+        // Deliver the update message
+        verifyPackets(bEid, address(bRegistry));
+
+        // Verify username is updated on both chains
+        assertEq(aRegistry.usernames(userA), username2);
+        assertEq(aRegistry.usernameOwners(username2), userA);
+        assertEq(aRegistry.usernameOwners(username1), address(0));
+
+        assertEq(bRegistry.usernames(userA), username2);
+        assertEq(bRegistry.usernameOwners(username2), userA);
+        assertEq(bRegistry.usernameOwners(username1), address(0));
     }
 }
