@@ -26,69 +26,63 @@ contract UsernameRegistry is OApp, OAppOptionsType3 {
     // Max username length
     uint256 public constant MAX_USERNAME_LENGTH = 32;
 
+    // Events
+    event UsernameClaimed(address indexed user, string username);
+    event UsernameUpdated(address indexed user, string oldUsername, string newUsername);
+
     constructor(address _endpoint, address _delegate) OApp(_endpoint, _delegate) Ownable(_delegate) {}
 
     /**
      * @notice Claim a username if it's available
      * @param _username The username to claim
      */
-    function claimUsername(string calldata _username) external {
+    function claimUsername(string calldata _username, uint32 _dstEid, bytes calldata _options) external payable {
         // Check username validity
-        if (bytes(_username).length == 0) {
-            revert EmptyUsername();
-        }
-        if (bytes(_username).length > MAX_USERNAME_LENGTH) {
-            revert UsernameTooLong(bytes(_username).length);
-        }
+        if (bytes(_username).length == 0) revert EmptyUsername();
+        if (bytes(_username).length > MAX_USERNAME_LENGTH) revert UsernameTooLong(bytes(_username).length);
 
         // Check if username is already claimed
-        if (usernameOwners[_username] != address(0)) {
-            revert UsernameAlreadyClaimed(_username);
-        }
+        if (usernameOwners[_username] != address(0)) revert UsernameAlreadyClaimed(_username);
 
         // Store previous username if exists
         string memory oldUsername = usernames[msg.sender];
-        if (bytes(oldUsername).length > 0) {
-            delete usernameOwners[oldUsername];
-        }
+        if (bytes(oldUsername).length > 0) delete usernameOwners[oldUsername];
 
         // Update mappings
         usernames[msg.sender] = _username;
         usernameOwners[_username] = msg.sender;
+
+        sendUsernameUpdate(_dstEid, _username, _options);
+
+        emit UsernameClaimed(msg.sender, _username);
     }
 
     /**
      * @notice Update a user's username
      * @param _newUsername The new username to claim
      */
-    function updateUsername(string calldata _newUsername) external {
+    function updateUsername(string calldata _newUsername, uint32 _dstEid, bytes calldata _options) external payable {
         // Check if user has a username
-        if (bytes(usernames[msg.sender]).length == 0) {
-            revert UserHasNoUsername();
-        }
+        if (bytes(usernames[msg.sender]).length == 0) revert UserHasNoUsername();
 
         // Check username validity
-        if (bytes(_newUsername).length == 0) {
-            revert EmptyUsername();
-        }
-        if (bytes(_newUsername).length > MAX_USERNAME_LENGTH) {
-            revert UsernameTooLong(bytes(_newUsername).length);
-        }
+        if (bytes(_newUsername).length == 0) revert EmptyUsername();
+        if (bytes(_newUsername).length > MAX_USERNAME_LENGTH) revert UsernameTooLong(bytes(_newUsername).length);
 
         // Check if username is already claimed
-        if (usernameOwners[_newUsername] != address(0)) {
-            revert UsernameAlreadyClaimed(_newUsername);
-        }
+        if (usernameOwners[_newUsername] != address(0)) revert UsernameAlreadyClaimed(_newUsername);
 
         // Store previous username if exists
         string memory oldUsername = usernames[msg.sender];
-        if (bytes(oldUsername).length > 0) {
-            delete usernameOwners[oldUsername];
-        }
+        if (bytes(oldUsername).length > 0) delete usernameOwners[oldUsername];
 
         // Update mappings
         usernames[msg.sender] = _newUsername;
         usernameOwners[_newUsername] = msg.sender;
+
+        sendUsernameUpdate(_dstEid, _newUsername, _options);
+
+        emit UsernameUpdated(msg.sender, oldUsername, _newUsername);
     }
 
     /**
@@ -102,12 +96,7 @@ contract UsernameRegistry is OApp, OAppOptionsType3 {
         uint32 _dstEid,
         string calldata _username,
         bytes calldata _options
-    ) external payable returns (MessagingReceipt memory receipt) {
-        // Ensure username is valid for the sender
-        if (usernameOwners[_username] != msg.sender) {
-            revert InvalidUsername(_username);
-        }
-
+    ) internal returns (MessagingReceipt memory receipt) {
         bytes memory _payload = abi.encode(msg.sender, _username);
         receipt = _lzSend(_dstEid, _payload, _options, MessagingFee(msg.value, 0), payable(msg.sender));
     }
@@ -145,9 +134,7 @@ contract UsernameRegistry is OApp, OAppOptionsType3 {
 
         // Store previous username if exists
         string memory oldUsername = usernames[user];
-        if (bytes(oldUsername).length > 0) {
-            delete usernameOwners[oldUsername];
-        }
+        if (bytes(oldUsername).length > 0) delete usernameOwners[oldUsername];
 
         // Update mappings
         usernames[user] = username;
